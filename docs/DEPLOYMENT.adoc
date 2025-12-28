@@ -1,0 +1,660 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024 Hyperpolymath
+= Explicit Trust Plane: End-to-End Deployment Guide
+:author: Hyperpolymath
+:email: hyperpolymath@proton.me
+:revnumber: 1.0.0
+:revdate: 2024-12-28
+:toc: left
+:toclevels: 4
+:sectnums:
+:icons: font
+:source-highlighter: rouge
+:experimental:
+
+== Introduction
+
+This guide walks you through deploying the Explicit Trust Plane from scratch—from key generation to DNS publication to TLS configuration and client verification.
+
+=== Prerequisites
+
+* A registered domain with DNS hosting that supports:
+** CERT records
+** IPSECKEY records
+** TLSA records
+** DNSSEC signing
+* OpenSSL 3.0+ installed
+* GnuPG 2.2+ installed
+* A server for TLS deployment
+
+=== Time Estimate
+
+| Phase | Duration |
+|-------|----------|
+| Key Generation | 5-10 minutes |
+| DNS Configuration | 15-30 minutes |
+| TLS Server Setup | 15-30 minutes |
+| Verification | 10-15 minutes |
+| *Total* | *45-85 minutes* |
+
+== Phase 1: Key Generation
+
+=== 1.1 Clone the Repository
+
+[source,bash]
+----
+git clone https://github.com/hyperpolymath/explicit-trust-plane.git
+cd explicit-trust-plane
+----
+
+=== 1.2 Generate Certificate Authority
+
+[CAUTION]
+====
+The Root CA private key must be kept offline after generation. Consider:
+
+* Using an air-gapped machine
+* Storing on an encrypted USB drive
+* Using a Hardware Security Module (HSM)
+====
+
+[source,bash]
+----
+# Replace with your actual domain
+export DOMAIN="example.com"
+
+# Generate Root CA (10 years) and Intermediate CA (5 years)
+./scripts/generate-ca.sh "${DOMAIN}"
+----
+
+Expected output:
+[source]
+----
+=== Explicit Trust Plane - CA Generation ===
+Domain: example.com
+Root validity: 3650 days
+Intermediate validity: 1825 days
+
+[1/4] Generating Ed448 Root CA private key...
+[2/4] Generating Root CA certificate...
+[3/4] Generating Ed448 Intermediate CA private key...
+[4/4] Generating Intermediate CA certificate...
+
+=== CA Generation Complete ===
+
+Root CA:
+  Private key: ca/root/ca-ed448.key (KEEP OFFLINE!)
+  Certificate: ca/root/ca-ed448.crt
+  DNS (Base64): ca/root/ca-ed448.crt.b64
+
+Intermediate CA:
+  Private key: ca/intermediate/intermediate-ed448.key
+  Certificate: ca/intermediate/intermediate-ed448.crt
+  Chain:       ca/intermediate/chain.crt
+  DNS (Base64): ca/intermediate/intermediate-ed448.crt.b64
+
+Root CA fingerprint (SHA256):
+SHA256 Fingerprint=AB:CD:12:34:...
+
+SECURITY REMINDER:
+  - Move ca-ed448.key to offline/HSM storage immediately
+  - Never store root CA key on networked systems
+----
+
+=== 1.3 Generate Server Certificate
+
+[source,bash]
+----
+# Generate Ed25519 server certificate (1 year validity)
+./scripts/generate-cert.sh "${DOMAIN}" 365
+----
+
+This creates:
+* `certs/example.com.key` - Private key (Ed25519)
+* `certs/example.com.crt` - Certificate
+* `certs/example.com.fullchain.crt` - Full chain for web servers
+* `certs/example.com.crt.b64` - Base64 for DNS CERT record
+
+=== 1.4 Generate X25519 Key Exchange
+
+[source,bash]
+----
+./scripts/generate-kex.sh "${DOMAIN}"
+----
+
+This creates:
+* `kex/example.com.x25519.key` - Private key
+* `kex/example.com.x25519.pub.b64` - Base64 public key for IPSECKEY
+
+=== 1.5 Generate OpenPGP Key
+
+[source,bash]
+----
+./scripts/generate-pgp.sh "Your Name" "admin@${DOMAIN}"
+----
+
+This creates:
+* `pgp/admin_at_example_com.asc` - ASCII armored public key
+* `pgp/admin_at_example_com.pgp.b64` - Base64 for DNS CERT record
+
+=== 1.6 Export DNS Records
+
+[source,bash]
+----
+./scripts/export-dns.sh "${DOMAIN}"
+----
+
+This generates a complete zone file at:
+`dns/records/example.com.zone`
+
+== Phase 2: DNS Configuration
+
+=== 2.1 Enable DNSSEC
+
+[WARNING]
+====
+DNSSEC must be enabled *before* publishing cryptographic records. Without DNSSEC, attackers can spoof your keys via DNS cache poisoning.
+====
+
+The DNSSEC setup process varies by provider:
+
+==== Cloudflare
+
+1. Go to DNS → Settings → DNSSEC
+2. Click "Enable DNSSEC"
+3. Add the DS record to your registrar
+
+==== AWS Route 53
+
+[source,bash]
+----
+# Create KSK
+aws route53 create-key-signing-key \
+    --hosted-zone-id Z123456789 \
+    --name example-com-ksk \
+    --key-management-service-arn arn:aws:kms:...
+
+# Enable DNSSEC
+aws route53 enable-hosted-zone-dnssec \
+    --hosted-zone-id Z123456789
+----
+
+==== Self-Hosted (BIND)
+
+[source,bash]
+----
+# Generate DNSSEC keys
+dnssec-keygen -a ED25519 -f KSK example.com
+dnssec-keygen -a ED25519 example.com
+
+# Sign the zone
+dnssec-signzone -S -o example.com db.example.com
+----
+
+=== 2.2 Add CERT Records
+
+Open `dns/records/example.com.zone` and add the records to your DNS provider.
+
+==== Using dig to verify format
+
+[source,bash]
+----
+# Extract the CERT record content
+cat dns/records/example.com.zone | grep -A5 "_server._cert"
+----
+
+==== Cloudflare (API)
+
+[source,bash]
+----
+ZONE_ID="your-zone-id"
+API_TOKEN="your-api-token"
+CERT_DATA=$(cat certs/example.com.crt.b64)
+
+curl -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records" \
+    -H "Authorization: Bearer ${API_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data '{
+        "type": "CERT",
+        "name": "_server._cert",
+        "data": {
+            "type": 1,
+            "key_tag": 0,
+            "algorithm": 0,
+            "certificate": "'"${CERT_DATA}"'"
+        },
+        "ttl": 3600
+    }'
+----
+
+==== BIND Zone File
+
+Add to your zone file:
+[source,dns]
+----
+$INCLUDE /etc/bind/zones/example.com.trust-plane.zone
+----
+
+=== 2.3 Add IPSECKEY Record
+
+[source,bash]
+----
+KEX_DATA=$(cat kex/example.com.x25519.pub.b64)
+
+# For BIND
+echo "_ipsec IN IPSECKEY 10 0 2 . ${KEX_DATA}"
+----
+
+=== 2.4 Add TLSA Record
+
+The export script generates TLSA records automatically:
+
+[source,dns]
+----
+_443._tcp  IN  TLSA  3 1 1  abcd1234...  ; SHA256 of SPKI
+----
+
+=== 2.5 Add CAA Records
+
+Restrict certificate issuance:
+[source,dns]
+----
+@  IN  CAA  0 issue "letsencrypt.org"
+@  IN  CAA  0 issuewild ";"
+@  IN  CAA  0 iodef "mailto:security@example.com"
+----
+
+=== 2.6 Verify DNS Propagation
+
+Wait for DNS propagation (typically 5-60 minutes), then verify:
+
+[source,bash]
+----
+# Check CERT record
+dig +short CERT _server._cert.example.com
+
+# Check IPSECKEY record
+dig +short IPSECKEY _ipsec.example.com
+
+# Check TLSA record
+dig +short TLSA _443._tcp.example.com
+
+# Verify DNSSEC
+dig +dnssec +short example.com
+----
+
+== Phase 3: TLS Server Configuration
+
+=== 3.1 Nginx Configuration
+
+[source,nginx]
+----
+# /etc/nginx/sites-available/example.com
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name example.com;
+
+    # Ed25519 Certificate Chain
+    ssl_certificate     /path/to/explicit-trust-plane/certs/example.com.fullchain.crt;
+    ssl_certificate_key /path/to/explicit-trust-plane/certs/example.com.key;
+
+    # Modern TLS configuration
+    ssl_protocols TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # HSTS
+    add_header Strict-Transport-Security "max-age=63072000" always;
+
+    # ... rest of configuration
+}
+----
+
+[NOTE]
+====
+Nginx requires OpenSSL 1.1.1+ for Ed25519 certificate support.
+Check with: `nginx -V 2>&1 | grep -o 'OpenSSL [0-9.]*'`
+====
+
+=== 3.2 Caddy Configuration
+
+[source,caddyfile]
+----
+# /etc/caddy/Caddyfile
+
+example.com {
+    tls /path/to/certs/example.com.fullchain.crt /path/to/certs/example.com.key
+
+    # ... rest of configuration
+}
+----
+
+=== 3.3 Apache Configuration
+
+[source,apache]
+----
+# /etc/apache2/sites-available/example.com.conf
+
+<VirtualHost *:443>
+    ServerName example.com
+
+    SSLEngine on
+    SSLCertificateFile    /path/to/certs/example.com.crt
+    SSLCertificateKeyFile /path/to/certs/example.com.key
+    SSLCertificateChainFile /path/to/ca/intermediate/chain.crt
+
+    # Modern TLS
+    SSLProtocol -all +TLSv1.3
+
+    # ... rest of configuration
+</VirtualHost>
+----
+
+=== 3.4 Test TLS Configuration
+
+[source,bash]
+----
+# Test connection
+openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | \
+    openssl x509 -text -noout | head -20
+
+# Verify certificate chain
+openssl s_client -connect example.com:443 -servername example.com -showcerts < /dev/null 2>/dev/null
+
+# Check certificate algorithm
+openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | \
+    openssl x509 -noout -text | grep "Public Key Algorithm"
+----
+
+== Phase 4: Client Verification
+
+=== 4.1 Verify DNS-Published Certificate
+
+[source,bash]
+----
+# Fetch certificate from DNS
+CERT_B64=$(dig +short CERT _server._cert.example.com | awk '{print $4}')
+
+# Decode and display
+echo "${CERT_B64}" | base64 -d | openssl x509 -inform DER -text -noout
+
+# Compare with TLS certificate
+TLS_CERT=$(openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | \
+    openssl x509 -outform DER | base64 -w0)
+
+if [ "${CERT_B64}" = "${TLS_CERT}" ]; then
+    echo "DNS certificate matches TLS certificate"
+else
+    echo "WARNING: Certificates do not match!"
+fi
+----
+
+=== 4.2 Verify DANE/TLSA
+
+[source,bash]
+----
+# Get TLSA record
+TLSA_HASH=$(dig +short TLSA _443._tcp.example.com | awk '{print $4}')
+
+# Calculate hash from live certificate
+LIVE_HASH=$(openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | \
+    openssl x509 -pubkey -noout | \
+    openssl pkey -pubin -outform DER | \
+    sha256sum | cut -d' ' -f1)
+
+if [ "${TLSA_HASH}" = "${LIVE_HASH}" ]; then
+    echo "TLSA validation passed"
+else
+    echo "WARNING: TLSA hash mismatch!"
+fi
+----
+
+=== 4.3 Verify OpenPGP Key
+
+[source,bash]
+----
+# Fetch PGP key from DNS
+PGP_B64=$(dig +short CERT _pgp.example.com | awk '{print $4}')
+
+# Import to GPG
+echo "${PGP_B64}" | base64 -d | gpg --import
+
+# Verify key
+gpg --list-keys admin@example.com
+----
+
+=== 4.4 Automated Verification Script
+
+Create `scripts/verify-deployment.sh`:
+
+[source,bash]
+----
+#!/usr/bin/env bash
+# Verify Explicit Trust Plane deployment
+
+set -euo pipefail
+
+DOMAIN="${1:-example.com}"
+ERRORS=0
+
+echo "=== Verifying Explicit Trust Plane for ${DOMAIN} ==="
+echo ""
+
+# Check DNSSEC
+echo -n "[DNSSEC] "
+if dig +dnssec +short "${DOMAIN}" | grep -q "RRSIG"; then
+    echo "PASS - DNSSEC enabled"
+else
+    echo "FAIL - DNSSEC not detected"
+    ((ERRORS++))
+fi
+
+# Check CERT record
+echo -n "[CERT]   "
+if dig +short CERT "_server._cert.${DOMAIN}" | grep -q "PKIX"; then
+    echo "PASS - CERT record found"
+else
+    echo "FAIL - CERT record not found"
+    ((ERRORS++))
+fi
+
+# Check IPSECKEY record
+echo -n "[IPSEC]  "
+if dig +short IPSECKEY "_ipsec.${DOMAIN}" | grep -q "10"; then
+    echo "PASS - IPSECKEY record found"
+else
+    echo "WARN - IPSECKEY record not found (optional)"
+fi
+
+# Check TLSA record
+echo -n "[TLSA]   "
+if dig +short TLSA "_443._tcp.${DOMAIN}" | grep -q "3 1 1"; then
+    echo "PASS - TLSA record found"
+else
+    echo "WARN - TLSA record not found"
+fi
+
+# Check TLS connection
+echo -n "[TLS]    "
+if openssl s_client -connect "${DOMAIN}:443" -servername "${DOMAIN}" < /dev/null 2>/dev/null | grep -q "Verify return code: 0"; then
+    echo "PASS - TLS connection verified"
+else
+    echo "WARN - TLS verification issue (may be expected with self-signed CA)"
+fi
+
+echo ""
+if [ "${ERRORS}" -eq 0 ]; then
+    echo "=== All critical checks passed ==="
+else
+    echo "=== ${ERRORS} critical check(s) failed ==="
+    exit 1
+fi
+----
+
+== Phase 5: Maintenance
+
+=== 5.1 Certificate Rotation
+
+Run the rotation script before certificates expire:
+
+[source,bash]
+----
+# Rotate server certificate
+./scripts/rotate-keys.sh example.com cert
+
+# Update DNS records
+./scripts/export-dns.sh example.com
+
+# Deploy new certificate to server
+# (copy to server and reload nginx/caddy/apache)
+
+# Update TLSA record in DNS
+----
+
+=== 5.2 Monitoring
+
+Set up alerts for:
+
+* Certificate expiration (30 days warning)
+* DNSSEC signature expiration
+* TLSA record mismatches
+
+Example cron job for monitoring:
+
+[source,bash]
+----
+# /etc/cron.daily/check-certs
+#!/bin/bash
+DOMAIN="example.com"
+DAYS=30
+
+# Check certificate expiration
+openssl s_client -connect "${DOMAIN}:443" -servername "${DOMAIN}" < /dev/null 2>/dev/null | \
+    openssl x509 -checkend $((DAYS * 86400)) || \
+    echo "Certificate expires within ${DAYS} days" | mail -s "Cert Alert: ${DOMAIN}" admin@${DOMAIN}
+----
+
+=== 5.3 Backup Strategy
+
+[source,bash]
+----
+# Backup all keys (encrypted)
+tar -czf - ca/ certs/ pgp/ kex/ | \
+    gpg --symmetric --cipher-algo AES256 > "trust-plane-backup-$(date +%Y%m%d).tar.gz.gpg"
+
+# Store backup securely:
+# - Encrypted cloud storage
+# - Offline media (USB, tape)
+# - Multiple geographic locations
+----
+
+== Troubleshooting
+
+=== CERT Record Not Resolving
+
+1. Verify record syntax: `dig +trace CERT _server._cert.example.com`
+2. Check if DNS provider supports CERT records
+3. Ensure DNSSEC is properly configured
+
+=== TLS Handshake Failures
+
+1. Verify OpenSSL/Nginx supports Ed25519: `openssl version`
+2. Check certificate chain completeness
+3. Verify key and certificate match: `openssl x509 -noout -modulus -in cert.crt`
+
+=== DANE Validation Failures
+
+1. Ensure TLSA record matches current certificate
+2. Check DNSSEC chain is intact
+3. Verify selector (1 = SPKI) and matching type (1 = SHA256)
+
+=== PGP Key Import Failures
+
+1. Verify key format: `echo "${B64}" | base64 -d | gpg --list-packets`
+2. Check key hasn't expired
+3. Ensure key is complete (not truncated by DNS)
+
+== Quick Reference Commands
+
+[source,bash]
+----
+# Generate all materials
+./scripts/generate-ca.sh example.com
+./scripts/generate-cert.sh example.com
+./scripts/generate-kex.sh example.com
+./scripts/generate-pgp.sh "Name" "email@example.com"
+./scripts/export-dns.sh example.com
+
+# Verify DNS records
+dig +short CERT _server._cert.example.com
+dig +short IPSECKEY _ipsec.example.com
+dig +short TLSA _443._tcp.example.com
+dig +dnssec +short example.com
+
+# Verify TLS
+openssl s_client -connect example.com:443
+
+# Rotate keys
+./scripts/rotate-keys.sh example.com cert
+./scripts/export-dns.sh example.com
+----
+
+== Appendix: DNS Provider Support Matrix
+
+[cols="1,1,1,1,1,1"]
+|===
+| Provider | CERT | IPSECKEY | TLSA | DNSSEC | Notes
+
+| Cloudflare
+| Yes
+| Yes
+| Yes
+| Yes
+| Full support via API
+
+| AWS Route 53
+| Yes
+| Yes
+| Yes
+| Yes
+| KMS integration available
+
+| Google Cloud DNS
+| Yes
+| Yes
+| Yes
+| Yes
+| Full support
+
+| DigitalOcean
+| Limited
+| No
+| Limited
+| No
+| Consider alternative
+
+| Namecheap
+| No
+| No
+| No
+| No
+| Use external DNS
+
+| GoDaddy
+| No
+| No
+| No
+| Limited
+| Not recommended
+|===
+
+== Next Steps
+
+After completing this deployment:
+
+1. *Document your setup* - Record all generated fingerprints
+2. *Set up monitoring* - Automated expiration alerts
+3. *Plan key rotation* - Calendar reminders for certificate renewal
+4. *Security audit* - Review the deployment with your security team
+5. *Publish documentation* - Let users know how to verify your identity

@@ -1,1 +1,217 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024 Hyperpolymath
+= Explicit Trust Plane
+:author: Hyperpolymath
+:email: hyperpolymath@proton.me
+:revnumber: 1.0.0
+:revdate: 2024-12-28
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
 
+image:https://img.shields.io/badge/license-AGPL--3.0--or--later-blue[License]
+image:https://img.shields.io/badge/status-active-green[Status]
+image:https://img.shields.io/badge/DNSSEC-required-red[DNSSEC]
+
+== Overview
+
+*Explicit Trust Plane* is a framework for DNS-published cryptographic identity, treating DNS as a decentralized public key infrastructure (PKI) rather than merely a naming system.
+
+[source]
+----
+┌─────────────────────────────────────────────────────────────────┐
+│                   EXPLICIT TRUST PLANE                          │
+│                                                                  │
+│   Your cryptographic identity, published via DNS                │
+│                                                                  │
+│   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐        │
+│   │  X.509  │   │ OpenPGP │   │ X25519  │   │  DANE   │        │
+│   │  Ed448  │   │ Ed25519 │   │   KEX   │   │  TLSA   │        │
+│   └────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘        │
+│        │             │             │             │              │
+│        └─────────────┴──────┬──────┴─────────────┘              │
+│                             │                                    │
+│                      ┌──────▼──────┐                            │
+│                      │    DNS      │                            │
+│                      │  + DNSSEC   │                            │
+│                      └─────────────┘                            │
+└─────────────────────────────────────────────────────────────────┘
+----
+
+== Features
+
+* *Modern Cryptography* - Ed448, Ed25519, X25519 (no legacy RSA required)
+* *Algorithm-Agile* - Ready for post-quantum migration
+* *Self-Sovereign Identity* - No centralized key servers
+* *Reproducible* - Scripted key generation and DNS export
+* *Explicit Role Separation* - Signing vs key exchange vs identity
+
+== Quick Start
+
+[source,bash]
+----
+# Clone the repository
+git clone https://github.com/hyperpolymath/explicit-trust-plane.git
+cd explicit-trust-plane
+
+# Generate all cryptographic materials for your domain
+./scripts/generate-ca.sh yourdomain.com
+./scripts/generate-cert.sh yourdomain.com
+./scripts/generate-kex.sh yourdomain.com
+./scripts/generate-pgp.sh "Your Name" "you@yourdomain.com"
+
+# Export DNS records
+./scripts/export-dns.sh yourdomain.com
+
+# View the generated zone file
+cat dns/records/yourdomain.com.zone
+----
+
+== Project Structure
+
+[source]
+----
+explicit-trust-plane/
+├── ca/                     # Certificate Authority materials
+│   ├── root/               # Ed448 Root CA (KEEP OFFLINE!)
+│   │   ├── ca-ed448.key    # Private key (HSM recommended)
+│   │   ├── ca-ed448.crt    # Root certificate
+│   │   └── ca-ed448.crt.b64 # Base64 for DNS
+│   └── intermediate/       # Ed448 Intermediate CA
+│       ├── intermediate-ed448.key
+│       ├── intermediate-ed448.crt
+│       └── chain.crt       # Full certificate chain
+├── certs/                  # End-entity certificates
+│   ├── *.key               # Ed25519 private keys
+│   ├── *.crt               # Certificates
+│   └── *.crt.b64           # Base64 for DNS CERT records
+├── pgp/                    # OpenPGP keys
+│   ├── *.asc               # ASCII armored public keys
+│   ├── *.pgp               # Binary public keys
+│   └── *.pgp.b64           # Base64 for DNS CERT records
+├── kex/                    # Key exchange materials
+│   ├── *.x25519.key        # X25519 private keys
+│   └── *.x25519.pub.b64    # Base64 for IPSECKEY records
+├── dns/                    # DNS zone files
+│   └── records/            # Generated zone includes
+├── scripts/                # Automation scripts
+│   ├── generate-ca.sh      # Create CA hierarchy
+│   ├── generate-cert.sh    # Create server certificates
+│   ├── generate-pgp.sh     # Create OpenPGP keys
+│   ├── generate-kex.sh     # Create X25519 keys
+│   ├── export-dns.sh       # Export all as DNS records
+│   └── rotate-keys.sh      # Key rotation with backup
+└── docs/                   # Documentation
+    ├── DESIGN.adoc         # Architecture & rationale
+    └── DEPLOYMENT.adoc     # End-to-end deployment guide
+----
+
+== Algorithm Selection
+
+[cols="1,1,2,2"]
+|===
+| Algorithm | Type | Use Case | DNS Record Type
+
+| Ed448
+| Signature
+| Long-term CA certificates
+| CERT (PKIX)
+
+| Ed25519
+| Signature
+| Server certs, PGP signing
+| CERT (PKIX/PGP)
+
+| X25519
+| Key Exchange
+| TLS 1.3, VPN bootstrap
+| IPSECKEY
+
+| SHA-256
+| Hash
+| TLSA fingerprints
+| TLSA
+|===
+
+IMPORTANT: These are *different cryptographic objects*, not one key encoded multiple ways.
+
+== DNS Record Types
+
+=== CERT Records (RFC 4398)
+
+[source,dns]
+----
+; X.509 Certificate
+_cert.example.com.  IN  CERT  PKIX 0 0 <base64-certificate>
+
+; OpenPGP Key
+_pgp.example.com.   IN  CERT  PGP 0 0 <base64-pgp-key>
+----
+
+=== IPSECKEY Records (RFC 4025)
+
+[source,dns]
+----
+_ipsec.example.com.  IN  IPSECKEY  10 0 2 . <base64-x25519-pubkey>
+----
+
+=== TLSA Records (RFC 6698 - DANE)
+
+[source,dns]
+----
+_443._tcp.example.com.  IN  TLSA  3 1 1 <sha256-fingerprint>
+----
+
+== Security Requirements
+
+[CAUTION]
+====
+*DNSSEC is mandatory.* Without DNSSEC, DNS-published keys can be spoofed via cache poisoning attacks.
+====
+
+* *No MD5/SHA1* - SHA-256 minimum for all operations
+* *HTTPS only* - No HTTP URLs in any configuration
+* *HSM for CA keys* - Root CA private key must be offline
+* *Key rotation* - Automated rotation scripts provided
+
+== Minimum Viable Set
+
+For a single domain, you need:
+
+1. *1× Ed448 Root CA* - Offline, 10-year validity
+2. *1× Ed25519 Server Cert* - For TLS authentication
+3. *1× X25519 Key* - For TLS 1.3 key exchange
+4. *1× OpenPGP Key* - For human identity
+
+== Documentation
+
+* link:docs/DESIGN.adoc[Design Document] - Full architecture and rationale
+* link:docs/DEPLOYMENT.adoc[Deployment Guide] - End-to-end deployment walkthrough
+
+== Prerequisites
+
+* OpenSSL 3.0+ (Ed448/Ed25519 support)
+* GnuPG 2.2+ (modern ECC support)
+* DNSSEC-enabled DNS zone
+
+Check your versions:
+[source,bash]
+----
+openssl version  # OpenSSL 3.0.0 or later
+gpg --version    # gnupg 2.2.0 or later
+----
+
+== License
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+This project is licensed under the GNU Affero General Public License v3.0 or later.
+
+== Contributing
+
+See link:CONTRIBUTING.md[CONTRIBUTING.md] for guidelines.
+
+== Author
+
+Hyperpolymath <hyperpolymath@proton.me>

@@ -1,0 +1,702 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024 Hyperpolymath
+= Explicit Trust Plane: DNS-Published Cryptographic Identity System
+:author: Hyperpolymath
+:email: hyperpolymath@proton.me
+:revnumber: 1.0.0
+:revdate: 2024-12-28
+:toc: left
+:toclevels: 4
+:sectnums:
+:icons: font
+:source-highlighter: rouge
+:experimental:
+
+== Executive Summary
+
+The *Explicit Trust Plane* is an architecture for publishing cryptographic identity materials via DNS, treating DNS as a decentralized public key infrastructure (PKI) rather than merely a naming system.
+
+This design enables:
+
+* Self-sovereign cryptographic identity
+* No dependence on centralized key servers
+* Algorithm-agile infrastructure ready for post-RSA migration
+* Explicit separation of cryptographic roles (signing vs key exchange)
+* Reproducible key generation and publication workflows
+
+== Design Principles
+
+=== Separation of Cryptographic Roles
+
+[cols="1,2,2"]
+|===
+| Role | Purpose | Why Separate
+
+| *Digital Signatures*
+| Authentication, integrity, non-repudiation
+| Signing keys need long-term stability
+
+| *Key Exchange*
+| Establishing shared secrets for encryption
+| Key agreement requires ephemeral properties
+
+| *Human Identity*
+| Email, web-of-trust, decentralized identity
+| Different trust model than TLS
+|===
+
+IMPORTANT: These are *different cryptographic objects*, not one certificate "reused three ways."
+
+=== Algorithm Selection Rationale
+
+[cols="1,1,2,2"]
+|===
+| Algorithm | Type | Use Case | Rationale
+
+| Ed448
+| Signature
+| Long-term X.509 certificates
+| 224-bit security level, post-quantum hedge
+
+| Ed25519
+| Signature
+| Fast signing, PGP keys
+| Widely supported, fast, 128-bit security
+
+| X25519
+| Key Exchange
+| TLS 1.3, VPNs, ephemeral sessions
+| Mandatory in modern TLS, distinct from Ed25519
+
+| SHA-256+
+| Hash
+| All cryptographic operations
+| MD5/SHA1 prohibited per security policy
+|===
+
+=== Why Not RSA?
+
+RSA remains supported for legacy compatibility but is *not recommended* for new deployments:
+
+* Key sizes growing unsustainably (4096+ bits)
+* Slower than elliptic curve alternatives
+* Larger certificate and key sizes
+* No forward secrecy without additional DHE
+
+== Architecture Overview
+
+[source]
+----
+┌─────────────────────────────────────────────────────────────────┐
+│                      EXPLICIT TRUST PLANE                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐        │
+│   │   Ed448     │    │   Ed25519   │    │   X25519    │        │
+│   │   X.509     │    │   X.509     │    │   IPSECKEY  │        │
+│   │             │    │   + PGP     │    │             │        │
+│   └──────┬──────┘    └──────┬──────┘    └──────┬──────┘        │
+│          │                  │                  │                │
+│          ▼                  ▼                  ▼                │
+│   ┌─────────────────────────────────────────────────────────┐  │
+│   │                      DNS LAYER                          │  │
+│   │  ┌────────┐  ┌────────┐  ┌───────────┐  ┌───────────┐   │  │
+│   │  │ CERT   │  │ CERT   │  │ IPSECKEY  │  │  TLSA     │   │  │
+│   │  │ (X509) │  │ (PGP)  │  │           │  │  (DANE)   │   │  │
+│   │  └────────┘  └────────┘  └───────────┘  └───────────┘   │  │
+│   └─────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│                              ▼                                  │
+│   ┌─────────────────────────────────────────────────────────┐  │
+│   │                     DNSSEC                               │  │
+│   │              (Mandatory for Production)                  │  │
+│   └─────────────────────────────────────────────────────────┘  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+----
+
+== Cryptographic Materials
+
+=== Certificate Hierarchy
+
+==== Root CA (Offline)
+
+* *Algorithm:* Ed448
+* *Validity:* 10 years
+* *Storage:* Air-gapped, hardware security module (HSM) preferred
+* *Purpose:* Sign intermediate certificates only
+
+==== Intermediate CA (Online)
+
+* *Algorithm:* Ed448
+* *Validity:* 2-5 years
+* *Storage:* HSM or encrypted disk with restricted access
+* *Purpose:* Sign end-entity certificates
+
+==== End-Entity Certificates
+
+[cols="1,1,1,2"]
+|===
+| Certificate | Algorithm | Validity | Purpose
+
+| TLS Server
+| Ed448 or Ed25519
+| 90 days - 1 year
+| HTTPS authentication
+
+| Code Signing
+| Ed448
+| 1-2 years
+| Software authenticity
+
+| Email (S/MIME)
+| Ed25519
+| 1 year
+| Email encryption/signing
+
+| Client Auth
+| Ed25519
+| 90 days
+| Mutual TLS
+|===
+
+=== OpenPGP Keys
+
+[cols="1,1,2"]
+|===
+| Key Type | Algorithm | Purpose
+
+| Primary
+| Ed25519
+| Identity binding, certification
+
+| Signing Subkey
+| Ed25519
+| Day-to-day signatures
+
+| Encryption Subkey
+| cv25519
+| Email/file encryption
+|===
+
+=== Key Exchange Materials
+
+* *Algorithm:* X25519
+* *Purpose:* TLS 1.3 key agreement, VPN establishment
+* *Published via:* IPSECKEY DNS record
+
+== DNS Record Types
+
+=== CERT Records (RFC 4398)
+
+[source,dns]
+----
+; X.509 Certificate
+_cert.example.com.  IN  CERT  PKIX  0  0  <base64-encoded-certificate>
+
+; OpenPGP Key
+_pgp.example.com.   IN  CERT  PGP   0  0  <base64-encoded-pgp-key>
+----
+
+.CERT Record Format
+[cols="1,3"]
+|===
+| Field | Description
+
+| `PKIX` (1)
+| X.509 certificate in DER format
+
+| `PGP` (3)
+| OpenPGP public key packet
+
+| Key Tag
+| 0 (unused for our purposes)
+
+| Algorithm
+| 0 (algorithm encoded in certificate)
+|===
+
+=== IPSECKEY Records (RFC 4025)
+
+[source,dns]
+----
+; X25519 Key Exchange Key
+_ipsec.example.com.  IN  IPSECKEY  10 0 2 . <base64-encoded-x25519-pubkey>
+----
+
+.IPSECKEY Record Format
+[cols="1,3"]
+|===
+| Field | Description
+
+| Precedence
+| Priority (10 = typical)
+
+| Gateway Type
+| 0 = no gateway
+
+| Algorithm
+| 2 = DSA (placeholder, actual key is X25519)
+
+| Gateway
+| `.` (no gateway)
+
+| Public Key
+| Base64-encoded raw public key
+|===
+
+=== TLSA Records (RFC 6698 - DANE)
+
+[source,dns]
+----
+; DANE TLS Certificate Association
+_443._tcp.example.com.  IN  TLSA  3 1 1  <sha256-fingerprint>
+----
+
+.TLSA Parameters
+[cols="1,1,3"]
+|===
+| Usage | Value | Meaning
+
+| 3
+| DANE-EE
+| End entity certificate pinning
+
+| Selector
+| 1
+| Subject Public Key Info (SPKI)
+
+| Matching Type
+| 1
+| SHA-256 hash
+|===
+
+== Key Generation Procedures
+
+=== Prerequisites
+
+* OpenSSL 3.0+ (Ed448/Ed25519 support)
+* GnuPG 2.2+ (modern ECC support)
+* DNSSEC-enabled zone
+
+=== Ed448 Root CA
+
+[source,bash]
+----
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Generate Ed448 Root CA
+
+set -euo pipefail
+
+DOMAIN="${1:-example.com}"
+VALIDITY_DAYS="${2:-3650}"  # 10 years
+
+# Generate private key
+openssl genpkey -algorithm ED448 -out "ca-ed448.key"
+
+# Generate self-signed root certificate
+openssl req -new -x509 \
+    -key "ca-ed448.key" \
+    -out "ca-ed448.crt" \
+    -days "${VALIDITY_DAYS}" \
+    -subj "/CN=${DOMAIN} Root CA/O=${DOMAIN}/C=US" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash"
+
+# Verify
+openssl x509 -in "ca-ed448.crt" -text -noout | head -20
+
+echo "Generated: ca-ed448.key, ca-ed448.crt"
+----
+
+=== Ed25519 Server Certificate
+
+[source,bash]
+----
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Generate Ed25519 Server Certificate
+
+set -euo pipefail
+
+DOMAIN="${1:-example.com}"
+
+# Generate private key
+openssl genpkey -algorithm ED25519 -out "server-ed25519.key"
+
+# Generate CSR
+openssl req -new \
+    -key "server-ed25519.key" \
+    -out "server-ed25519.csr" \
+    -subj "/CN=${DOMAIN}/O=${DOMAIN}"
+
+# Self-sign for testing (in production, sign with CA)
+openssl x509 -req \
+    -in "server-ed25519.csr" \
+    -signkey "server-ed25519.key" \
+    -out "server-ed25519.crt" \
+    -days 365 \
+    -extfile <(printf "subjectAltName=DNS:%s,DNS:*.%s" "${DOMAIN}" "${DOMAIN}")
+
+echo "Generated: server-ed25519.key, server-ed25519.csr, server-ed25519.crt"
+----
+
+=== X25519 Key Exchange
+
+[source,bash]
+----
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Generate X25519 Key Exchange Key
+
+set -euo pipefail
+
+# Generate private key
+openssl genpkey -algorithm X25519 -out "x25519.key"
+
+# Extract public key (raw, for IPSECKEY)
+openssl pkey -in "x25519.key" -pubout -outform DER | \
+    tail -c 32 | base64 > "x25519.pub.b64"
+
+echo "Generated: x25519.key"
+echo "Public key (Base64 for IPSECKEY):"
+cat "x25519.pub.b64"
+----
+
+=== OpenPGP Key
+
+[source,bash]
+----
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Generate modern OpenPGP key
+
+set -euo pipefail
+
+NAME="${1:-Example User}"
+EMAIL="${2:-user@example.com}"
+
+# Generate key with Ed25519 primary + CV25519 encryption subkey
+gpg --batch --generate-key <<EOF
+Key-Type: eddsa
+Key-Curve: ed25519
+Key-Usage: sign,cert
+Subkey-Type: ecdh
+Subkey-Curve: cv25519
+Subkey-Usage: encrypt
+Name-Real: ${NAME}
+Name-Email: ${EMAIL}
+Expire-Date: 2y
+%no-protection
+EOF
+
+# Export for DNS
+gpg --export "${EMAIL}" | base64 -w0 > "${EMAIL}.pgp.b64"
+
+echo "Generated PGP key for ${EMAIL}"
+echo "DNS record data in: ${EMAIL}.pgp.b64"
+----
+
+== DNS Zone Template
+
+[source,dns]
+----
+; SPDX-License-Identifier: AGPL-3.0-or-later
+; Explicit Trust Plane DNS Zone Template
+; Replace <DOMAIN> and Base64 values with actual data
+
+$ORIGIN <DOMAIN>.
+$TTL 3600
+
+; =============================================================================
+; X.509 Certificates (CERT PKIX)
+; =============================================================================
+
+; Ed448 Root CA
+_ca._cert            IN  CERT  PKIX 0 0 (
+    <base64-encoded-der-certificate>
+)
+
+; Ed25519 Server Certificate
+_server._cert        IN  CERT  PKIX 0 0 (
+    <base64-encoded-der-certificate>
+)
+
+; =============================================================================
+; OpenPGP Keys (CERT PGP)
+; =============================================================================
+
+; Primary identity key
+_pgp                 IN  CERT  PGP 0 0 (
+    <base64-encoded-pgp-public-key>
+)
+
+; Per-user keys (optional pattern)
+user._pgpkey         IN  CERT  PGP 0 0 (
+    <base64-encoded-user-pgp-key>
+)
+
+; =============================================================================
+; Key Exchange (IPSECKEY)
+; =============================================================================
+
+; X25519 for VPN/TLS key agreement
+_ipsec               IN  IPSECKEY  10 0 2 . (
+    <base64-encoded-x25519-public-key>
+)
+
+; =============================================================================
+; DANE/TLSA
+; =============================================================================
+
+; HTTPS on port 443
+_443._tcp            IN  TLSA  3 1 1 (
+    <sha256-hash-of-certificate-spki>
+)
+
+; SMTP on port 25 (MTA-STS)
+_25._tcp.mail        IN  TLSA  3 1 1 (
+    <sha256-hash-of-mail-certificate-spki>
+)
+
+; =============================================================================
+; CAA (Certificate Authority Authorization)
+; =============================================================================
+
+@                    IN  CAA  0 issue "letsencrypt.org"
+@                    IN  CAA  0 issuewild ";"
+@                    IN  CAA  0 iodef "mailto:security@<DOMAIN>"
+----
+
+== Deployment Architecture
+
+=== Single-Repository Model (Recommended for Small Deployments)
+
+[source]
+----
+explicit-trust-plane/
+├── ca/
+│   ├── root/
+│   │   ├── ca-ed448.key          # OFFLINE - HSM
+│   │   └── ca-ed448.crt
+│   └── intermediate/
+│       ├── intermediate-ed448.key
+│       └── intermediate-ed448.crt
+├── certs/
+│   ├── server-ed25519.key
+│   ├── server-ed25519.crt
+│   └── server-ed25519.crt.der    # For DNS CERT
+├── pgp/
+│   ├── primary.pgp               # ASCII armored
+│   └── primary.pgp.b64           # For DNS CERT
+├── kex/
+│   ├── x25519.key
+│   └── x25519.pub.b64            # For IPSECKEY
+├── dns/
+│   ├── zone.template
+│   └── records/
+│       ├── cert.zone
+│       ├── tlsa.zone
+│       └── ipseckey.zone
+├── scripts/
+│   ├── generate-ca.sh
+│   ├── generate-cert.sh
+│   ├── generate-pgp.sh
+│   ├── generate-kex.sh
+│   ├── export-dns.sh
+│   └── rotate-keys.sh
+└── docs/
+    ├── DESIGN.adoc               # This document
+    ├── DEPLOYMENT.adoc           # Deployment guide
+    └── ROTATION.adoc             # Key rotation procedures
+----
+
+=== Multi-Repository Model (Recommended for Organizations)
+
+|===
+| Repository | Contents | Access
+
+| `trust-plane-ca`
+| Root and intermediate CA materials
+| Highly restricted
+
+| `trust-plane-certs`
+| End-entity certificates
+| Operations team
+
+| `trust-plane-pgp`
+| OpenPGP keyrings
+| Identity administrators
+
+| `trust-plane-dns`
+| DNS zone files and automation
+| DNS operators
+|===
+
+== Security Considerations
+
+=== DNSSEC Requirement
+
+CAUTION: Without DNSSEC, DNS-published keys can be spoofed via cache poisoning.
+
+All DNS zones publishing cryptographic material *must* be DNSSEC-signed.
+
+=== Key Storage
+
+[cols="1,1,2"]
+|===
+| Material | Storage | Notes
+
+| Root CA private key
+| Air-gapped HSM
+| Never on networked systems
+
+| Intermediate CA key
+| HSM or encrypted disk
+| Limited operator access
+
+| Server private keys
+| Encrypted at rest
+| Auto-rotation recommended
+
+| PGP primary key
+| Offline backup + smartcard
+| Subkeys for daily use
+
+| X25519 private key
+| Encrypted, ephemeral preferred
+| Generate fresh for each session
+|===
+
+=== Rotation Schedule
+
+[cols="1,1,2"]
+|===
+| Material | Rotation Interval | Trigger Events
+
+| Root CA
+| 10 years
+| Compromise only
+
+| Intermediate CA
+| 2-5 years
+| Annual review
+
+| Server certificates
+| 90 days - 1 year
+| Let's Encrypt cadence
+
+| PGP subkeys
+| 1-2 years
+| Proactive rotation
+
+| X25519 keys
+| Session-based
+| Each connection
+|===
+
+== Validation and Testing
+
+=== Verify CERT Records
+
+[source,bash]
+----
+# Query CERT record
+dig +short CERT _cert.example.com
+
+# Decode and verify certificate
+dig +short CERT _cert.example.com | base64 -d | openssl x509 -inform DER -text -noout
+----
+
+=== Verify TLSA Records
+
+[source,bash]
+----
+# Query TLSA
+dig +short TLSA _443._tcp.example.com
+
+# Verify with openssl
+openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | \
+    openssl x509 -pubkey -noout | \
+    openssl pkey -pubin -outform DER | \
+    sha256sum
+----
+
+=== Verify IPSECKEY Records
+
+[source,bash]
+----
+# Query IPSECKEY
+dig +short IPSECKEY _ipsec.example.com
+----
+
+== Future Considerations
+
+=== Post-Quantum Readiness
+
+The current design uses Ed448 for long-term certificates as a hedge against quantum computers. When NIST post-quantum standards mature:
+
+* CRYSTALS-Dilithium for signatures
+* CRYSTALS-Kyber for key exchange
+* Hybrid schemes during transition
+
+=== DMARC/DKIM Integration
+
+Email authentication via DKIM can publish keys using:
+
+* `selector._domainkey.example.com TXT "v=DKIM1; k=ed25519; p=..."`
+
+This integrates naturally with the Explicit Trust Plane model.
+
+== References
+
+* RFC 4398 - Storing Certificates in the DNS
+* RFC 4025 - A Method for Storing IPsec Keying Material in DNS
+* RFC 6698 - DNS-Based Authentication of Named Entities (DANE)
+* RFC 8461 - SMTP MTA Strict Transport Security (MTA-STS)
+* RFC 8032 - Edwards-Curve Digital Signature Algorithm (EdDSA)
+* RFC 7748 - Elliptic Curves for Security (X25519, X448)
+
+== Appendix A: Quick Reference Card
+
+[source]
+----
+╔════════════════════════════════════════════════════════════════════╗
+║              EXPLICIT TRUST PLANE - QUICK REFERENCE                 ║
+╠════════════════════════════════════════════════════════════════════╣
+║                                                                     ║
+║  PURPOSE             ALGORITHM       DNS RECORD TYPE               ║
+║  ─────────────────────────────────────────────────────────────────  ║
+║  Long-term signing   Ed448           CERT PKIX (X.509)             ║
+║  Fast signing        Ed25519         CERT PKIX/PGP                 ║
+║  Key exchange        X25519          IPSECKEY                      ║
+║  TLS pinning         -               TLSA                          ║
+║  Human identity      Ed25519+cv25519 CERT PGP                      ║
+║                                                                     ║
+║  MINIMUM VIABLE SET:                                                ║
+║  • 1× Ed448 Root CA (offline)                                       ║
+║  • 1× Ed25519 Server Cert (TLS)                                     ║
+║  • 1× X25519 Key Exchange (TLS 1.3)                                 ║
+║  • 1× OpenPGP Ed25519 (identity)                                    ║
+║                                                                     ║
+║  SECURITY REQUIREMENTS:                                             ║
+║  ✓ DNSSEC mandatory                                                 ║
+║  ✓ No MD5/SHA1                                                      ║
+║  ✓ HTTPS only                                                       ║
+║  ✓ HSM for CA keys                                                  ║
+║                                                                     ║
+╚════════════════════════════════════════════════════════════════════╝
+----
+
+== Appendix B: Glossary
+
+CA:: Certificate Authority
+DANE:: DNS-Based Authentication of Named Entities
+DNSSEC:: DNS Security Extensions
+HSM:: Hardware Security Module
+IPSECKEY:: IPsec Key DNS record type
+PKIX:: Public Key Infrastructure (X.509)
+SPKI:: Subject Public Key Info
+TLSA:: TLS Authentication DNS record type

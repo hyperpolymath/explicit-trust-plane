@@ -1,21 +1,17 @@
-# RSR-template-repo - RSR Standard Justfile Template
+# Explicit Trust Plane - DNS-Published Cryptographic Identity
 # https://just.systems/man/en/
 #
-# This is the CANONICAL template for all RSR projects.
-# Copy this file to new projects and customize the {{PLACEHOLDER}} values.
-#
 # Run `just` to see all available recipes
-# Run `just cookbook` to generate docs/just-cookbook.adoc
-# Run `just combinations` to see matrix recipe options
+# Run `just generate example.com` to generate all crypto materials
 
 set shell := ["bash", "-uc"]
 set dotenv-load := true
 set positional-arguments := true
 
-# Project metadata - CUSTOMIZE THESE
-project := "RSR-template-repo"
-version := "0.1.0"
-tier := "infrastructure"  # 1 | 2 | infrastructure
+# Project metadata
+project := "explicit-trust-plane"
+version := "1.0.0"
+tier := "infrastructure"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEFAULT & HELP
@@ -50,31 +46,51 @@ info:
 # BUILD & COMPILE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Build the project (debug mode)
-build *args:
-    @echo "Building {{project}}..."
-    # TODO: Add build command for your language
-    # Rust: cargo build {{args}}
-    # ReScript: npm run build
-    # Elixir: mix compile
+# Generate all cryptographic materials for a domain
+generate domain:
+    @echo "Generating all crypto materials for {{domain}}..."
+    ./scripts/generate-ca.sh "{{domain}}"
+    ./scripts/generate-cert.sh "{{domain}}"
+    ./scripts/generate-kex.sh "{{domain}}"
+    ./scripts/export-dns.sh "{{domain}}"
+    @echo ""
+    @echo "Done! See dns/records/{{domain}}.zone for DNS records"
 
-# Build in release mode with optimizations
-build-release *args:
-    @echo "Building {{project}} (release)..."
-    # TODO: Add release build command
-    # Rust: cargo build --release {{args}}
+# Generate CA only
+generate-ca domain:
+    ./scripts/generate-ca.sh "{{domain}}"
 
-# Build and watch for changes
-build-watch:
-    @echo "Watching for changes..."
-    # TODO: Add watch command
-    # Rust: cargo watch -x build
-    # ReScript: npm run watch
+# Generate server certificate only
+generate-cert domain:
+    ./scripts/generate-cert.sh "{{domain}}"
 
-# Clean build artifacts [reversible: rebuild with `just build`]
+# Generate key exchange key only
+generate-kex domain:
+    ./scripts/generate-kex.sh "{{domain}}"
+
+# Generate OpenPGP key
+generate-pgp name email:
+    ./scripts/generate-pgp.sh "{{name}}" "{{email}}"
+
+# Export DNS records
+export-dns domain:
+    ./scripts/export-dns.sh "{{domain}}"
+
+# Rotate keys with backup
+rotate domain keytype="all":
+    ./scripts/rotate-keys.sh "{{domain}}" "{{keytype}}"
+
+# Clean generated materials [destructive!]
 clean:
-    @echo "Cleaning..."
-    rm -rf target _build dist lib node_modules
+    @echo "Cleaning generated materials..."
+    rm -rf ca/root/*.key ca/root/*.crt ca/root/*.der ca/root/*.b64 ca/root/*.srl
+    rm -rf ca/intermediate/*.key ca/intermediate/*.crt ca/intermediate/*.csr ca/intermediate/*.der ca/intermediate/*.b64 ca/intermediate/*.srl
+    rm -rf certs/*.key certs/*.crt certs/*.csr certs/*.der certs/*.b64
+    rm -rf pgp/*.asc pgp/*.pgp pgp/*.b64
+    rm -rf kex/*.key kex/*.pub kex/*.raw kex/*.b64
+    rm -rf dns/records/*.zone
+    rm -rf backup/
+    @echo "Cleaned. .gitkeep files preserved."
 
 # Deep clean including caches [reversible: rebuild]
 clean-all: clean
