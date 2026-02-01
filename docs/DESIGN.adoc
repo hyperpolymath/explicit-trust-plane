@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: PMPL-1.0-or-later
 // SPDX-FileCopyrightText: 2024 Hyperpolymath
 = Explicit Trust Plane: DNS-Published Cryptographic Identity System
 :author: Hyperpolymath
@@ -284,7 +284,7 @@ _443._tcp.example.com.  IN  TLSA  3 1 1  <sha256-fingerprint>
 [source,bash]
 ----
 #!/usr/bin/env bash
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: PMPL-1.0-or-later
 # Generate Ed448 Root CA
 
 set -euo pipefail
@@ -316,7 +316,7 @@ echo "Generated: ca-ed448.key, ca-ed448.crt"
 [source,bash]
 ----
 #!/usr/bin/env bash
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: PMPL-1.0-or-later
 # Generate Ed25519 Server Certificate
 
 set -euo pipefail
@@ -348,7 +348,7 @@ echo "Generated: server-ed25519.key, server-ed25519.csr, server-ed25519.crt"
 [source,bash]
 ----
 #!/usr/bin/env bash
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: PMPL-1.0-or-later
 # Generate X25519 Key Exchange Key
 
 set -euo pipefail
@@ -370,7 +370,7 @@ cat "x25519.pub.b64"
 [source,bash]
 ----
 #!/usr/bin/env bash
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: PMPL-1.0-or-later
 # Generate modern OpenPGP key
 
 set -euo pipefail
@@ -403,7 +403,7 @@ echo "DNS record data in: ${EMAIL}.pgp.b64"
 
 [source,dns]
 ----
-; SPDX-License-Identifier: AGPL-3.0-or-later
+; SPDX-License-Identifier: PMPL-1.0-or-later
 ; Explicit Trust Plane DNS Zone Template
 ; Replace <DOMAIN> and Base64 values with actual data
 

@@ -1,5 +1,5 @@
-image:https://img.shields.io/badge/license-PMPL--1.0-blue.svg[License,link="https://github.com/hyperpolymath/palimpsest-license"]
-// SPDX-License-Identifier: PMPL-1.0
+image:https://img.shields.io/badge/License-PMPL--1.0-blue.svg[License: PMPL-1.0,link="https://github.com/hyperpolymath/palimpsest-license"]
+// SPDX-License-Identifier: PMPL-1.0-or-later
 // SPDX-FileCopyrightText: 2024 Hyperpolymath
 = Explicit Trust Plane
 
@@ -207,7 +207,7 @@ gpg --version    # gnupg 2.2.0 or later
 
 == License
 
-SPDX-License-Identifier: PMPL-1.0
+SPDX-License-Identifier: PMPL-1.0-or-later-or-later
 
 This project is licensed under the GNU Affero General Public License v3.0 or later.
 
