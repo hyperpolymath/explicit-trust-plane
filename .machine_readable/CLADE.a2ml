@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Clade declaration — part of the gv-clade-index registry
+# See: https://github.com/hyperpolymath/gv-clade-index
+
+[identity]
+uuid = "536fcd4c-64d3-5c38-baf4-11c028826d97"
+primary-forge = "github"
+primary-owner = "hyperpolymath"
+canonical-name = "explicit-trust-plane"
+prefixed-name = "gv-explicit-trust-plane"
+
+[clade]
+primary = "gv"
+secondary = ["sc"]
+assigned = "2026-03-16"
+rationale = ""
+
+[forges]
+github = "hyperpolymath/explicit-trust-plane"
+gitlab = "hyperpolymath/explicit-trust-plane"
+bitbucket = "hyperpolymath/explicit-trust-plane"
+
+[lineage]
+type = "standalone"
+parent = "Explicit trust plane framework"
+born = "2026-03-16"
