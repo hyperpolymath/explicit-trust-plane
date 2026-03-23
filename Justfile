@@ -233,18 +233,18 @@ cookbook:
 man:
     #!/usr/bin/env bash
     mkdir -p docs/man
-    cat > docs/man/{{project}}.1 << EOF
-.TH RSR-TEMPLATE-REPO 1 "$(date +%Y-%m-%d)" "{{version}}" "RSR Template Manual"
-.SH NAME
-{{project}} \- RSR standard repository template
-.SH SYNOPSIS
-.B just
-[recipe] [args...]
-.SH DESCRIPTION
-Canonical template for RSR (Rhodium Standard Repository) projects.
-.SH AUTHOR
-Hyperpolymath <hyperpolymath@proton.me>
-EOF
+    cat > docs/man/{{project}}.1 << 'MANEOF'
+    .TH RSR-TEMPLATE-REPO 1 "$(date +%Y-%m-%d)" "{{version}}" "RSR Template Manual"
+    .SH NAME
+    {{project}} \- RSR standard repository template
+    .SH SYNOPSIS
+    .B just
+    [recipe] [args...]
+    .SH DESCRIPTION
+    Canonical template for RSR (Rhodium Standard Repository) projects.
+    .SH AUTHOR
+    Hyperpolymath <hyperpolymath@proton.me>
+    MANEOF
     echo "Generated: docs/man/{{project}}.1"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -278,14 +278,15 @@ ci: deps quality
 
 # Install git hooks
 install-hooks:
-    @mkdir -p .git/hooks
-    @cat > .git/hooks/pre-commit << 'EOF'
-#!/bin/bash
-just fmt-check || exit 1
-just lint || exit 1
-EOF
-    @chmod +x .git/hooks/pre-commit
-    @echo "Git hooks installed"
+    #!/usr/bin/env bash
+    mkdir -p .git/hooks
+    cat > .git/hooks/pre-commit << 'HOOKEOF'
+    #!/bin/bash
+    just fmt-check || exit 1
+    just lint || exit 1
+    HOOKEOF
+    chmod +x .git/hooks/pre-commit
+    echo "Git hooks installed"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECURITY
@@ -446,11 +447,6 @@ todos:
 # Open in editor
 edit:
     ${EDITOR:-code} .
-
-# [AUTO-GENERATED] Multi-arch / RISC-V target
-build-riscv:
-	@echo "Building for RISC-V..."
-	cross build --target riscv64gc-unknown-linux-gnu
 
 # Run panic-attacker pre-commit scan
 assail:
