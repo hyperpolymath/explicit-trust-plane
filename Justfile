@@ -9,6 +9,8 @@ set dotenv-load := true
 set positional-arguments := true
 
 # Project metadata
+import? "contractile.just"
+
 project := "explicit-trust-plane"
 version := "1.0.0"
 tier := "infrastructure"
