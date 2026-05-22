@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # SPDX-FileCopyrightText: 2024 Hyperpolymath
 #
 # export-dns.sh - Export all cryptographic materials as DNS zone records
@@ -28,7 +28,7 @@ SAFE_DOMAIN="${DOMAIN//\*/_wildcard_}"
 
 # --- Header ---
 cat > "${RECORDS_DIR}/${SAFE_DOMAIN}.zone" <<EOF
-; SPDX-License-Identifier: PMPL-1.0-or-later
+; SPDX-License-Identifier: MPL-2.0
 ; Explicit Trust Plane - DNS Records for ${DOMAIN}
 ; Generated: ${TIMESTAMP}
 ;
