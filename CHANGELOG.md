@@ -1,8 +1,7 @@
 <!--
 SPDX-License-Identifier: MPL-2.0
-SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 -->
-
 # Changelog
 
 All notable changes to `explicit-trust-plane` will be documented in this file.
@@ -37,8 +36,8 @@ this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(scorecard): enforce granular permissions and add fuzzing placeholder
 - fix(ci): Resolve workflow-linter self-matching and metadata issues
 - fix: correct email jonathan.jewell → j.d.a.jewell
-- fix: global AGPL-3.0-or-later → PMPL-1.0-or-later replacement
-- fix(license): SPDX AGPL-3.0 → PMPL-1.0-or-later in dotfiles
+- fix: global MPL-2.0 → MPL-2.0-or-later replacement
+- fix(license): SPDX AGPL-3.0 → MPL-2.0-or-later in dotfiles
 
 ### Changed
 

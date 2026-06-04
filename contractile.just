@@ -75,27 +75,27 @@ trust-container-images-pinned:
 
 # === K9 Components ===
 
-# K9 component: contractiles/k9/examples/ci-config.k9.ncl
+# K9 component: contractiles/self-validating/examples/ci-config.k9.ncl
 k9-ci-config:
-    contractile k9 run contractiles/k9/examples/ci-config.k9.ncl
+    contractile k9 run contractiles/self-validating/examples/ci-config.k9.ncl
 
-# K9 component: contractiles/k9/examples/project-metadata.k9.ncl
+# K9 component: contractiles/self-validating/examples/project-metadata.k9.ncl
 k9-project-metadata:
-    contractile k9 run contractiles/k9/examples/project-metadata.k9.ncl
+    contractile k9 run contractiles/self-validating/examples/project-metadata.k9.ncl
 
-# K9 component: contractiles/k9/examples/setup-repo.k9.ncl
+# K9 component: contractiles/self-validating/examples/setup-repo.k9.ncl
 k9-setup-repo:
-    contractile k9 run contractiles/k9/examples/setup-repo.k9.ncl
+    contractile k9 run contractiles/self-validating/examples/setup-repo.k9.ncl
 
-# K9 component: contractiles/k9/template-hunt.k9.ncl
+# K9 component: contractiles/self-validating/template-hunt.k9.ncl
 k9-template-hunt:
-    contractile k9 run contractiles/k9/template-hunt.k9.ncl
+    contractile k9 run contractiles/self-validating/template-hunt.k9.ncl
 
-# K9 component: contractiles/k9/template-kennel.k9.ncl
+# K9 component: contractiles/self-validating/template-kennel.k9.ncl
 k9-template-kennel:
-    contractile k9 run contractiles/k9/template-kennel.k9.ncl
+    contractile k9 run contractiles/self-validating/template-kennel.k9.ncl
 
-# K9 component: contractiles/k9/template-yard.k9.ncl
+# K9 component: contractiles/self-validating/template-yard.k9.ncl
 k9-template-yard:
-    contractile k9 run contractiles/k9/template-yard.k9.ncl
+    contractile k9 run contractiles/self-validating/template-yard.k9.ncl
 
