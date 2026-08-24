@@ -107,7 +107,7 @@ test *args:
     @echo "Running tests..."
     # TODO: Add test command
     # Rust: cargo test {{args}}
-    # ReScript: npm test
+    # AffineScript: npm test
     # Elixir: mix test
 
 # Run tests with verbose output
@@ -130,7 +130,7 @@ fmt:
     @echo "Formatting..."
     # TODO: Add format command
     # Rust: cargo fmt
-    # ReScript: npm run format
+    # AffineScript: npm run format
     # Elixir: mix format
 
 # Check formatting without changes
@@ -184,7 +184,7 @@ deps:
     @echo "Installing dependencies..."
     # TODO: Add deps command
     # Rust: (automatic with cargo)
-    # ReScript: npm install
+    # AffineScript: npm install
     # Elixir: mix deps.get
 
 # Audit dependencies for vulnerabilities
@@ -323,8 +323,8 @@ validate-rsr:
     for f in .well-known/security.txt .well-known/ai.txt .well-known/humans.txt; do
         [ -f "$f" ] || MISSING="$MISSING $f"
     done
-    if [ ! -f "guix.scm" ] && [ ! -f ".guix-channel" ] && [ ! -f "flake.nix" ]; then
-        MISSING="$MISSING guix.scm/flake.nix"
+    if [ ! -f "guix.scm" ] && [ ! -f ".guix-channel" ] && [ ! -f "flake.guix" ]; then
+        MISSING="$MISSING guix.scm/flake.guix"
     fi
     if [ -n "$MISSING" ]; then
         echo "MISSING:$MISSING"
@@ -360,7 +360,7 @@ state-phase:
     @grep -oP '\(phase\s+\.\s+\K[^)]+' STATE.scm 2>/dev/null | head -1 || echo "unknown"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# GUIX & NIX
+# GUIX & GUIX
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Enter Guix development shell (primary)
@@ -371,9 +371,9 @@ guix-shell:
 guix-build:
     guix build -f guix.scm
 
-# Enter Nix development shell (fallback)
-nix-shell:
-    @if [ -f "flake.nix" ]; then nix develop; else echo "No flake.nix"; fi
+# Enter Guix development shell (fallback)
+guix-shell:
+    @if [ -f "flake.guix" ]; then guix develop; else echo "No flake.guix"; fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HYBRID AUTOMATION
